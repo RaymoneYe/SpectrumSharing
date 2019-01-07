@@ -1,8 +1,17 @@
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+from itertools import chain
 
 N = 100
+p = 1
+sigma = 0
+w = 1
+xx = 0
+yy = 0
+zz = 0
+xp = 0
+
 trans = np.empty([N, 2], dtype=int)
 recv = np.empty([N, 2], dtype=int)
 dist = np.empty([N, 1], dtype=int)
@@ -28,13 +37,45 @@ for i in range(0, N):
 
 plt.plot([trans[2, 0], recv[2, 0]], [trans[2, 1], recv[2, 1]], '-r')
 plt.show()
-print('trans[2]:', trans[2], '\n recv[2]:', recv[2], '\n dist[2]:', dist[2], '\nk:', int(np.sqrt(np.sum(np.square(trans[2] - recv[2])))))
+print('trans[10]:', trans[10], '\n recv[5]:', recv[5], '\n dist[5]:', dist[5], '\nk:',
+      int(np.sqrt(np.sum(np.square(trans[10] - recv[5])))))
 
 for i in range(0, N):
     for j in range(0, N):
-        h[i, j] = 120.9 + math.log10(np.sqrt(np.sum(np.square(trans[i] - recv[j])))/1000)
+        h[i, j] = 32.45 + 20*math.log10(np.sqrt(np.sum(np.square(trans[j] - recv[i])))/1000)+20*math.log10(24)
+        h[i, j] = math.sqrt(1/pow(10, h[i, j]/10))
 
-print(h[0:5])
+print('h[5,10]=%.4f'%h[5, 10])
+print('h[5,5]=%.4f'%h[10, 10])
+# One D2D net created
+x = np.ones([N, 1], dtype=float)
+xx = np.empty([N, 1], dtype=float)
+z = np.empty([N, 1], dtype=float)
+y = np.empty([N, 1], dtype=float)
+
+for t in range(0, 20):
+    for i in range(0, N):
+        for j in chain(range(0, i), range(i+1, N)):
+            zz = zz + pow(h[i, j], 2) * x[j] * p
+        z[i] = (pow(h[i, i], 2) * p * x[i])/(zz + sigma)
+        zz = 0
+        for j in range(0, N):
+            yy = yy + pow(h[i, j], 2)*p*x[j]
+        y[i] = (math.sqrt(w*(1+z[i])*pow(h[i, i], 2)*p*x[i]))/(yy + sigma)
+        yy = 0
+        for j in range(0, N):
+            xp = xp + pow(y[i], 2) * pow(h[j, i], 2) * p
+        xx[i] = pow((y[i] * math.sqrt(w * (1 + z[i]) * pow(h[i, i], 2) * p)) / xp, 2)
+        x[i] = min(1, xx[i])
+        xp = 0
+
+print('z[45]=%.10f:'%z[45])
+print('y[45]=%.10f'%y[45])
+print('xx[45]=%.10f'%xx[45])
+print('x[45]=%.10f'%x[45])
+print(x[0:10])
+
+
 
 
 
