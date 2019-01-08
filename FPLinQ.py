@@ -3,9 +3,15 @@ import math
 import matplotlib.pyplot as plt
 from itertools import chain
 
-N = 100
+N = 300
 p = 1
 sigma = 0
+Gt = 2.5
+Gr = 2.5
+Ptdbm = 40
+fmhz = 2400
+NdBm = -169
+Noise = (10 ** (NdBm/10))*0.001
 w = 1
 xx = 0
 yy = 0
@@ -16,7 +22,7 @@ trans = np.empty([N, 2], dtype=int)
 recv = np.empty([N, 2], dtype=int)
 dist = np.empty([N, 1], dtype=int)
 h = np.empty([N, N], dtype=float)
-
+H = np.empty([N, N], dtype=float)
 for i in range(0, N):
     trans[i] = np.random.randint(0, 1000, size=[1, 2])
     dist[i] = np.random.uniform(2, 65)
@@ -31,23 +37,31 @@ for i in range(0, N):
             recv[i, 1] = np.random.randint(max(0, trans[i, 1] - dist[i]), min(1000, trans[i, 1] + dist[i]), size=[1, 1])
 
 for i in range(0, N):
-    plt.plot([trans[i, 0], recv[i, 0]], [trans[i, 1], recv[i, 1]], '-b')
+    plt.plot([trans[i, 0], recv[i, 0]], [trans[i, 1], recv[i, 1]], '-r')
+    plt.axis([0, 1010, 0, 1010])
     # plt.scatter(trans[2, 0], trans[2, 1], c='r', marker='*')
     # plt.scatter(recv[2, :], '.b')
 
-plt.plot([trans[2, 0], recv[2, 0]], [trans[2, 1], recv[2, 1]], '-r')
-plt.show()
+# plt.plot([trans[2, 0], recv[2, 0]], [trans[2, 1], recv[2, 1]], '-r')
+# plt.show()
 print('trans[10]:', trans[10], '\n recv[5]:', recv[5], '\n dist[5]:', dist[5], '\nk:',
       int(np.sqrt(np.sum(np.square(trans[10] - recv[5])))))
 
 for i in range(0, N):
     for j in range(0, N):
-        h[i, j] = 32.45 + 20*math.log10(np.sqrt(np.sum(np.square(trans[j] - recv[i])))/1000)+20*math.log10(24)
-        h[i, j] = math.sqrt(1/pow(10, h[i, j]/10))
+        h[i, j] = 32.45 + 20*math.log10(np.sqrt(np.sum(np.square(trans[j] - recv[i])))/1000)+20*math.log10(fmhz)-Gt-Gr
+# 当pi=1时， H[ii]数值上等于pi*h[i,j]^2
+Prdbm = Ptdbm - h
+for i in range(0, N):
+    a = Prdbm[i] / 10
+    H[i] = (10 ** a) * 0.001
 
-print('h[5,10]=%.4f'%h[5, 10])
-print('h[5,5]=%.4f'%h[10, 10])
+
+print('H[5,10]=%.14f'%H[5, 10])
+print('H[5,5]=%.14f'%H[10, 10])
 # One D2D net created
+
+
 x = np.ones([N, 1], dtype=float)
 xx = np.empty([N, 1], dtype=float)
 z = np.empty([N, 1], dtype=float)
@@ -56,26 +70,36 @@ y = np.empty([N, 1], dtype=float)
 for t in range(0, 20):
     for i in range(0, N):
         for j in chain(range(0, i), range(i+1, N)):
-            zz = zz + pow(h[i, j], 2) * x[j] * p
-        z[i] = (pow(h[i, i], 2) * p * x[i])/(zz + sigma)
+            zz = zz + H[i, j] * x[j] * p
+        z[i] = (H[i, i] * p * x[i])/(zz + Noise)
         zz = 0
         for j in range(0, N):
-            yy = yy + pow(h[i, j], 2)*p*x[j]
-        y[i] = (math.sqrt(w*(1+z[i])*pow(h[i, i], 2)*p*x[i]))/(yy + sigma)
+            yy = yy + H[i, j]*p*x[j]
+        y[i] = (math.sqrt(w*(1+z[i])*H[i, i]*p*x[i]))/(yy + Noise)
         yy = 0
         for j in range(0, N):
-            xp = xp + pow(y[i], 2) * pow(h[j, i], 2) * p
-        xx[i] = pow((y[i] * math.sqrt(w * (1 + z[i]) * pow(h[i, i], 2) * p)) / xp, 2)
+            xp = xp + pow(y[i], 2) *H[j, i] * p
+        xx[i] = pow(((y[i] * math.sqrt(w * (1 + z[i]) * H[i, i] * p)) / xp), 2)
         x[i] = min(1, xx[i])
+        Q = 2*y[i]*math.sqrt(w*(1+z[i])*H[i, i]*x[i]) - pow(xp*math.sqrt(x[i]), 2)
+        if Q > 0:
+            x[i] = 1
+        else:
+            x[i] = 0
         xp = 0
 
 print('z[45]=%.10f:'%z[45])
 print('y[45]=%.10f'%y[45])
 print('xx[45]=%.10f'%xx[45])
 print('x[45]=%.10f'%x[45])
-print(x[0:10])
-
-
-
-
+counter = 0
+for i in range(0, N):
+    if x[i] != 0:
+        if i in range(0, 20):
+            print(H[i, i])
+        counter = counter +1
+        plt.plot([trans[i, 0], recv[i, 0]], [trans[i, 1], recv[i, 1]], '-b')
+        plt.axis([0, 1010, 0, 1010])
+print(counter)
+plt.show()
 
