@@ -3,7 +3,7 @@ import math
 import matplotlib.pyplot as plt
 from itertools import chain
 
-N = 300
+N = 200
 p = 1
 sigma = 0
 Gt = 2.5
@@ -23,6 +23,8 @@ recv = np.empty([N, 2], dtype=int)
 dist = np.empty([N, 1], dtype=int)
 h = np.empty([N, N], dtype=float)
 H = np.empty([N, N], dtype=float)
+rate = np.empty([N, 1], dtype=float)
+
 for i in range(0, N):
     trans[i] = np.random.randint(0, 1000, size=[1, 2])
     dist[i] = np.random.uniform(2, 65)
@@ -95,11 +97,17 @@ print('x[45]=%.10f'%x[45])
 counter = 0
 for i in range(0, N):
     if x[i] != 0:
-        if i in range(0, 20):
-            print(H[i, i])
-        counter = counter +1
+        # if i in range(0, 20):
+        # print(H[i, i])
+        aa = 0
+        for j in chain(range(0, i), range(i + 1, N)):
+            aa = aa + H[i, j]*p*x[j]
+        rate[i] = math.log10(1 + (H[i, i]*p*x[i])/(aa + Noise))
+        counter = counter + 1
         plt.plot([trans[i, 0], recv[i, 0]], [trans[i, 1], recv[i, 1]], '-b')
         plt.axis([0, 1010, 0, 1010])
-print(counter)
+print('Activate rate:', counter/N)
 plt.show()
+
+print('sumrate:', sum(rate))
 
