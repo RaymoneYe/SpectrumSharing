@@ -35,8 +35,8 @@ testinternumber = 10
 
 # %%初始化发送机接收机
 def linkpair(testnumber):
-    t = np.random.random(testnumber) * 2 * np.pi - np.pi
-    t = np.expand_dims(t, axis=1)
+    t = np.random.random(testnumber) * 2 * np.pi - np.pi  # （0 - pi）之间的值
+    t = np.expand_dims(t, axis=1)   # 变成列矩阵
     x = np.cos(t)
     y = np.sin(t)
     i_set = np.arange(0, testnumber, 1)
@@ -56,7 +56,7 @@ def linkpair(testnumber):
                 Rx[i] = Tx[i] - 2 * x[i]
             if Ry[i] > region or Ry[i] < 0:
                 Ry[i] = Ty[i] - 2 * y[i]
-        T = np.vstack((Tx.T, Ty.T)).T
+        T = np.vstack((Tx.T, Ty.T)).T  # vstack: 以行堆叠列表
         R = np.vstack((Rx.T, Ry.T)).T
     return T, R, testnumber, len
 
