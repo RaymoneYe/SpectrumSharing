@@ -3,9 +3,8 @@ import math
 import matplotlib.pyplot as plt
 from itertools import chain
 
-N = 200
+N = 500
 p = 1
-sigma = 0
 Gt = 2.5
 Gr = 2.5
 Ptdbm = 40
@@ -13,10 +12,7 @@ fmhz = 2400
 NdBm = -169
 Noise = (10 ** (NdBm/10))*0.001
 w = 1
-xx = 0
-yy = 0
-zz = 0
-xp = 0
+region = 1000
 
 trans = np.empty([N, 2], dtype=int)
 recv = np.empty([N, 2], dtype=int)
@@ -24,6 +20,34 @@ dist = np.empty([N, 1], dtype=int)
 h = np.empty([N, N], dtype=float)
 H = np.empty([N, N], dtype=float)
 rate = np.empty([N, 1], dtype=float)
+# #############################################################################
+def linkpair(N):
+    t = np.random.random(N) * 2 * np.pi - np.pi
+    t = np.expand_dims(t, axis=1)
+    x = np.cos(t)
+    y = np.sin(t)
+    i_set = np.arange(0, N, 1)
+    Tx = np.random.uniform(0, 1000, N)
+    Tx = np.expand_dims(Tx, axis=1)
+    Ty = np.random.uniform(0, 1000, N)
+    Ty = np.expand_dims(Ty, axis=1)
+    len = np.zeros((N, 1))
+    for i in i_set:
+        len[i] = np.random.uniform(2, 65)
+        x[i] = x[i] * len[i]
+        y[i] = y[i] * len[i]
+        Rx = Tx + x
+        Ry = Ty + y
+        for i in range(0, N):
+            if Rx[i] > region or Rx[i] < 0:
+                Rx[i] = Tx[i] - 2 * x[i]
+            if Ry[i] > region or Ry[i] < 0:
+                Ry[i] = Ty[i] - 2 * y[i]
+        T = np.vstack((Tx.T, Ty.T)).T
+        R = np.vstack((Rx.T, Ry.T)).T
+    return T, R, N, len
+# ############################################################################
+
 
 for i in range(0, N):
     trans[i] = np.random.randint(0, 1000, size=[1, 2])
@@ -41,17 +65,14 @@ for i in range(0, N):
 for i in range(0, N):
     plt.plot([trans[i, 0], recv[i, 0]], [trans[i, 1], recv[i, 1]], '-r')
     plt.axis([0, 1010, 0, 1010])
-    # plt.scatter(trans[2, 0], trans[2, 1], c='r', marker='*')
-    # plt.scatter(recv[2, :], '.b')
 
-# plt.plot([trans[2, 0], recv[2, 0]], [trans[2, 1], recv[2, 1]], '-r')
-# plt.show()
 print('trans[10]:', trans[10], '\n recv[5]:', recv[5], '\n dist[5]:', dist[5], '\nk:',
       int(np.sqrt(np.sum(np.square(trans[10] - recv[5])))))
 
 for i in range(0, N):
     for j in range(0, N):
-        h[i, j] = 32.45 + 20*math.log10(np.sqrt(np.sum(np.square(trans[j] - recv[i])))/1000)+20*math.log10(fmhz)-Gt-Gr
+        h[i, j] = 32.45 + 20*math.log10(np.sqrt((trans[j, 0] - recv[i, 0])**2 + (trans[j, 1] - recv[i, 1])**2)/1000)\
+                  + 20*math.log(fmhz, 10)-Gt-Gr
 # 当pi=1时， H[ii]数值上等于pi*h[i,j]^2
 Prdbm = Ptdbm - h
 for i in range(0, N):
@@ -64,50 +85,44 @@ print('H[5,5]=%.14f'%H[10, 10])
 # One D2D net created
 
 
+xx = np.random.randint(0, 2, (N, 1))
 x = np.ones([N, 1], dtype=float)
-xx = np.empty([N, 1], dtype=float)
 z = np.empty([N, 1], dtype=float)
 y = np.empty([N, 1], dtype=float)
+for i in range(0, N):
+    if xx[i] == 0:
+        x[i] = 0
 
-for t in range(0, 20):
+
+for t in range(0, 101):
     for i in range(0, N):
-        for j in chain(range(0, i), range(i+1, N)):
-            zz = zz + H[i, j] * x[j] * p
-        z[i] = (H[i, i] * p * x[i])/(zz + Noise)
-        zz = 0
-        for j in range(0, N):
-            yy = yy + H[i, j]*p*x[j]
-        y[i] = (math.sqrt(w*(1+z[i])*H[i, i]*p*x[i]))/(yy + Noise)
-        yy = 0
-        for j in range(0, N):
-            xp = xp + pow(y[i], 2) *H[j, i] * p
-        xx[i] = pow(((y[i] * math.sqrt(w * (1 + z[i]) * H[i, i] * p)) / xp), 2)
-        x[i] = min(1, xx[i])
-        Q = 2*y[i]*math.sqrt(w*(1+z[i])*H[i, i]*x[i]) - pow(xp*math.sqrt(x[i]), 2)
-        if Q > 0:
-            x[i] = 1
-        else:
-            x[i] = 0
-        xp = 0
+        z[i] = (H[i, i] * x[i])/(np.dot(H[i, :].T, x) - H[i, i]*x[i] + Noise)
+        y[i] = math.sqrt(w*(1+z[i])*H[i, i]*p*x[i])/(np.dot(H[i, :].T, x) + Noise)
+        xxx = (y[i] * np.sqrt(w * (1 + z[i]) * H[i, i] * p)) / np.dot(H[:, i].T, np.multiply(y, y))
+        # xxx = y[i] * np.sqrt(w * (1 + z[i]) * H[i, i]) / (np.dot(H[i, :].T, np.multiply(y, y)))
+        x[i] = min(1, xxx*xxx)
+for i in range(0, N):
+    Q = 2*y[i]*math.sqrt(w*(1+z[i])*H[i, i]*x[i]) - x[i] * (np.dot(H[:, i].T, np.multiply(y, y)))
+    if Q > 0:
+        x[i] = 1
+    else:
+        x[i] = 0
 
-print('z[45]=%.10f:'%z[45])
-print('y[45]=%.10f'%y[45])
-print('xx[45]=%.10f'%xx[45])
-print('x[45]=%.10f'%x[45])
+# print('z[45]=%.10f:'%z[45])
+# print('y[45]=%.10f'%y[45])
+# print('x[45]=%.10f'%x[45])
 counter = 0
 for i in range(0, N):
+    if x[i] == 0:
+        H[i, :] = 0
+        H[:, i] = 0
+
+for i in range(0, N):
     if x[i] != 0:
-        # if i in range(0, 20):
-        # print(H[i, i])
-        aa = 0
-        for j in chain(range(0, i), range(i + 1, N)):
-            aa = aa + H[i, j]*p*x[j]
-        rate[i] = math.log10(1 + (H[i, i]*p*x[i])/(aa + Noise))
+        rate[i] = math.log2(1 + H[i, i]/(np.sum(H[i, :]) - H[i, i]*x[i] + Noise))
         counter = counter + 1
         plt.plot([trans[i, 0], recv[i, 0]], [trans[i, 1], recv[i, 1]], '-b')
-        plt.axis([0, 1010, 0, 1010])
+        plt.axis([0, 1050, 0, 1050])
 print('Activate rate:', counter/N)
+print('sumrate:', np.sum(rate))
 plt.show()
-
-print('sumrate:', sum(rate))
-
