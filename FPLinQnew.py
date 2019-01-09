@@ -91,5 +91,5 @@ print('z[45]=%.10f:'%z[45])
 print('y[45]=%.10f'%y[45])
 print('xx[45]=%.10f'%xx[45])
 print('x[45]=%.10f'%x[45])
-print(x[0:10])
+# print(x[0:10])
 
