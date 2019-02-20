@@ -87,7 +87,7 @@ for t in range(0, 101):
         # xxx = y[i] * np.sqrt(w * (1 + z[i]) * H[i, i]) / (np.dot(H[i, :].T, np.multiply(y, y)))
         x[i] = min(1, xxx*xxx)
 for i in range(0, N):
-    Q = 2*y[i]*math.sqrt(w*(1+z[i])*H[i, i]*x[i]) - x[i] * (np.dot(H[:, i].T, np.multiply(y, y)))
+    Q = 2*y[i]*math.sqrt(w*(1+z[i])*H[i, i]) - (np.dot(H[:, i].T, np.multiply(y, y)))
     if Q > 0:
         x[i] = 1
     else:
