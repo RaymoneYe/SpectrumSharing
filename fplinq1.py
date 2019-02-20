@@ -3,7 +3,7 @@ import math
 import matplotlib.pyplot as plt
 from itertools import chain
 
-N = 500
+N = 300
 p = 1
 Gt = 2.5
 Gr = 2.5
@@ -99,9 +99,13 @@ for i in range(0, N):
         H[i, :] = 0
         H[:, i] = 0
 snr = np.zeros((N, 1))
+sum1 = 0
 for i in range(0, N):
     if H[i, i] != 0:
-        snr[i] = H[i, i]/(np.sum(H[i]) - H[i, i]*x[i] + Noise)
+        for j in range(0, N):
+            sum1 = sum1 + H[i, j]*x[j]
+        snr[i] = H[i, i]/(sum1 - H[i, i]*x[i] + Noise)
+        sum1 = 0
         rate[i] = 5*np.log2(1 + snr[i])
         counter = counter + 1
         plt.plot([T[i, 0], R[i, 0]], [T[i, 1], R[i, 1]], '-b')

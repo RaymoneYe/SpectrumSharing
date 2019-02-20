@@ -3,7 +3,7 @@ import math
 import matplotlib.pyplot as plt
 from itertools import chain
 
-N = 500
+N = 1000
 p = 1
 Gt = 2.5
 Gr = 2.5
@@ -19,7 +19,7 @@ B = 5e6
 h = np.empty([N, N], dtype=float)
 H = np.empty([N, N], dtype=float)
 rate = np.zeros([N, 1], dtype=float)
-
+print(N)
 
 def linkpair(N):
     t = np.random.random(N) * 2 * np.pi - np.pi
@@ -87,11 +87,13 @@ for t in range(0, 101):
         # xxx = y[i] * np.sqrt(w * (1 + z[i]) * H[i, i]) / (np.dot(H[i, :].T, np.multiply(y, y)))
         x[i] = min(1, xxx*xxx)
 for i in range(0, N):
-    Q = 2*y[i]*math.sqrt(w*(1+z[i])*H[i, i]*x[i]) - x[i] * (np.dot(H[:, i].T, np.multiply(y, y)))
-    if Q > 0:
-        x[i] = 1
-    else:
-        x[i] = 0
+    xp = np.array([0, 1])
+    Q = np.zeros([2, 1])
+    Q[0] = 2 * y[i] * math.sqrt(w * (1 + z[i]) * H[i, i] * xp[0]) - xp[0] * (np.dot(H[:, i].T, np.multiply(y, y)))
+#    Q[2] = 2 * y[i] * math.sqrt(w * (1 + z[i]) * H[i, i] * xp[2]) - xp[2] * (np.dot(H[:, i].T, np.multiply(y, y)))
+    Q[1] = 2 * y[i] * math.sqrt(w * (1 + z[i]) * H[i, i] * xp[1]) - xp[1] * (np.dot(H[:, i].T, np.multiply(y, y)))
+#    Q[3] = 2 * y[i] * math.sqrt(w * (1 + z[i]) * H[i, i] * xp[3]) - xp[3] * (np.dot(H[:, i].T, np.multiply(y, y)))
+    x[i] = xp[np.argmax(Q)]
 
 counter = 0
 for i in range(0, N):
@@ -99,9 +101,13 @@ for i in range(0, N):
         H[i, :] = 0
         H[:, i] = 0
 snr = np.zeros((N, 1))
+sum1 = 0
 for i in range(0, N):
     if H[i, i] != 0:
-        snr[i] = H[i, i]/(np.sum(H[i]) - H[i, i]*x[i] + Noise)
+        for j in range(0, N):
+            sum1 = sum1 + H[i, j]*x[j]
+        snr[i] = H[i, i]*x[i]/(sum1 - H[i, i]*x[i] + Noise)
+        sum1 = 0
         rate[i] = 5*np.log2(1 + snr[i])
         counter = counter + 1
         plt.plot([T[i, 0], R[i, 0]], [T[i, 1], R[i, 1]], '-b')
