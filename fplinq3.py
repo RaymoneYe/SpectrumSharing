@@ -87,12 +87,10 @@ for t in range(0, 101):
         # xxx = y[i] * np.sqrt(w * (1 + z[i]) * H[i, i]) / (np.dot(H[i, :].T, np.multiply(y, y)))
         x[i] = min(1, xxx*xxx)
 for i in range(0, N):
-    xp = np.array([0, 1])
-    Q = np.zeros([2, 1])
-    Q[0] = 2 * y[i] * math.sqrt(w * (1 + z[i]) * H[i, i] * xp[0]) - xp[0] * (np.dot(H[:, i].T, np.multiply(y, y)))
-#    Q[2] = 2 * y[i] * math.sqrt(w * (1 + z[i]) * H[i, i] * xp[2]) - xp[2] * (np.dot(H[:, i].T, np.multiply(y, y)))
-    Q[1] = 2 * y[i] * math.sqrt(w * (1 + z[i]) * H[i, i] * xp[1]) - xp[1] * (np.dot(H[:, i].T, np.multiply(y, y)))
-#    Q[3] = 2 * y[i] * math.sqrt(w * (1 + z[i]) * H[i, i] * xp[3]) - xp[3] * (np.dot(H[:, i].T, np.multiply(y, y)))
+    xp = np.array([0, 0.25, 0.5, 0.75, 1])
+    Q = np.zeros([5, 1])
+    for j in range(0, 5):
+        Q[j] = 2 * y[i] * math.sqrt(w * (1 + z[i]) * H[i, i] * xp[j]) - xp[j] * (np.dot(H[:, i].T, np.multiply(y, y)))
     x[i] = xp[np.argmax(Q)]
 
 counter = 0
