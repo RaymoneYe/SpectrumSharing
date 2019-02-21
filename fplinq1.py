@@ -3,7 +3,7 @@ import math
 import matplotlib.pyplot as plt
 from itertools import chain
 
-N = 300
+N = 1000
 p = 1
 Gt = 2.5
 Gr = 2.5
@@ -14,11 +14,6 @@ Noise = (10 ** (NdBm/10))*0.001
 w = 1
 region = 1000
 B = 5e6
-
-
-h = np.empty([N, N], dtype=float)
-H = np.empty([N, N], dtype=float)
-rate = np.zeros([N, 1], dtype=float)
 
 
 def linkpair(N):
@@ -48,68 +43,88 @@ def linkpair(N):
     return T, R
 
 
-[T, R] = linkpair(N)
-for i in range(0, N):
-    plt.plot([T[i, 0], R[i, 0]], [T[i, 1], R[i, 1]], '-r')
-    plt.axis([0, 1010, 0, 1010])
-
-
-for i in range(0, N):
-    for j in range(0, N):
-        h[i, j] = 32.45 + 20*math.log10(np.sqrt((T[j, 0] - R[i, 0])**2 + (T[j, 1] - R[i, 1])**2)/1000)\
-                  + 20*math.log(fmhz, 10)-Gt-Gr
-# 当Pi=1时， H[ii]数值上等于pi*h[i,j]^2,
-Prdbm = Ptdbm - h     # (L=Pt/Pr)
-for i in range(0, N):
-    a = Prdbm[i] / 10
-    H[i] = (10 ** a) * 0.001
-
-
-print('H[5,10]=%.14f' % H[5, 10])
-print('H[5,5]=%.14f W' % H[10, 10])
-# One D2D net created
-
-
-xx = np.random.randint(0, 2, (N, 1))  # [low, high).
-x = np.ones([N, 1], dtype=float)
-z = np.empty([N, 1], dtype=float)
-y = np.empty([N, 1], dtype=float)
-for i in range(0, N):                 # 随机初始化
-    if xx[i] == 0:
-        x[i] = 0
-
-
-for t in range(0, 101):
+def hpara(T, R, N):
+    h = np.zeros([N, N], dtype=float)
+    H = np.zeros([N, N], dtype=float)
     for i in range(0, N):
-        z[i] = (H[i, i] * x[i])/(np.dot(H[i, :].T, x) - H[i, i]*x[i] + Noise)   # numpyarray.T: 转置
-        y[i] = math.sqrt(w*(1+z[i])*H[i, i]*p*x[i])/(np.dot(H[i, :].T, x) + Noise)
-        xxx = (y[i] * np.sqrt(w * (1 + z[i]) * H[i, i] * p)) / np.dot(H[:, i].T, np.multiply(y, y))
-        # xxx = y[i] * np.sqrt(w * (1 + z[i]) * H[i, i]) / (np.dot(H[i, :].T, np.multiply(y, y)))
-        x[i] = min(1, xxx*xxx)
-for i in range(0, N):
-    Q = 2*y[i]*math.sqrt(w*(1+z[i])*H[i, i]) - (np.dot(H[:, i].T, np.multiply(y, y)))
-    if Q > 0:
-        x[i] = 1
-    else:
-        x[i] = 0
-
-counter = 0
-for i in range(0, N):
-    if x[i] == 0:
-        H[i, :] = 0
-        H[:, i] = 0
-snr = np.zeros((N, 1))
-sum1 = 0
-for i in range(0, N):
-    if H[i, i] != 0:
         for j in range(0, N):
-            sum1 = sum1 + H[i, j]*x[j]
-        snr[i] = H[i, i]/(sum1 - H[i, i]*x[i] + Noise)
-        sum1 = 0
-        rate[i] = 5*np.log2(1 + snr[i])
-        counter = counter + 1
-        plt.plot([T[i, 0], R[i, 0]], [T[i, 1], R[i, 1]], '-b')
-        plt.axis([0, 1050, 0, 1050])
-print('Activate rate:', counter/N*100, '%')
-print('sumrate:', np.sum(rate), 'Mbps')
-plt.show()
+            h[i, j] = 32.45 + 20*math.log10(np.sqrt((T[j, 0] - R[i, 0])**2 + (T[j, 1] - R[i, 1])**2)/1000)\
+                      + 20*math.log(fmhz, 10)-Gt-Gr
+# 当Pi=1时， H[ii]数值上等于pi*h[i,j]^2,
+    Prdbm = Ptdbm - h     # (L=Pt/Pr)
+    for i in range(0, N):
+        a = Prdbm[i] / 10
+        H[i] = (10 ** a) * 0.001
+    return H
+
+
+def iteration(x, y, z, H, Noise):
+    for t in range(0, 101):
+        for i in range(0, N):
+            z[i] = (H[i, i] * x[i])/(np.dot(H[i, :].T, x) - H[i, i]*x[i] + Noise)   # numpyarray.T: 转置
+            y[i] = math.sqrt(w*(1+z[i])*H[i, i]*p*x[i])/(np.dot(H[i, :].T, x) + Noise)
+            xxx = (y[i] * np.sqrt(w * (1 + z[i]) * H[i, i] * p)) / (np.dot(H[:, i].T, (np.multiply(y, y))))
+            x[i] = min(1, xxx*xxx)
+    for i in range(0, N):
+        Q = 2*y[i]*math.sqrt(w*(1+z[i])*H[i, i]) - (np.dot(H[:, i].T, np.multiply(y, y)))
+        if Q > 0:
+            x[i] = 1
+        else:
+            x[i] = 0
+    return x
+
+
+def updateH(H):
+    H1 = np.copy(H)
+    for i in range(0, N):
+        if x[i] == 0:
+            H1[i, :] = 0
+            H1[:, i] = 0
+    return H1
+
+
+def rates(x, H):
+    rate = np.zeros([N, 1], dtype=float)
+    counter = 0
+    snr = np.zeros((N, 1))
+    sum1 = 0
+    for i in range(0, N):
+        if H[i, i] != 0:
+            counter = counter + 1
+            for j in range(0, N):
+                sum1 = sum1 + H[i, j]*x[j]
+            snr[i] = H[i, i]/(sum1 - H[i, i]*x[i] + Noise)
+            sum1 = 0
+            rate[i] = 5*np.log2(1 + snr[i])
+            plt.plot([T[i, 0], R[i, 0]], [T[i, 1], R[i, 1]], '-b')
+            plt.axis([0, 1050, 0, 1050])
+#           print(counter)
+    return counter, rate
+
+
+K = 100
+count = np.zeros(K)
+ratess = np.zeros(K)
+for k in range(0, K):
+    # 随机初始化
+    xx = np.random.randint(0, 2, (N, 1))  # [low, high).
+    x = np.ones([N, 1], dtype=float)
+    z = np.zeros([N, 1], dtype=float)
+    y = np.zeros([N, 1], dtype=float)
+    for i in range(0, N):
+        if xx[i] == 0:
+            x[i] = 0
+# ==========main func=============
+    [T, R] = linkpair(N)
+    H = hpara(T, R, N)
+    x = iteration(x, y, z, H, Noise)
+    H1 = updateH(H)
+    [count[k], rate] = rates(x, H1)
+    ratess[k] = sum(rate)
+    # for i in range(0, N):
+    #    plt.plot([T[i, 0], R[i, 0]], [T[i, 1], R[i, 1]], '-r')
+    #   plt.axis([0, 1010, 0, 1010])
+print('N =', N)
+print('Aver-activate rate:', sum(count)/(K*N)*100, '%')
+print('Aver-sumrate:', np.sum(ratess)/K, 'Mbps')
+# plt.show()
