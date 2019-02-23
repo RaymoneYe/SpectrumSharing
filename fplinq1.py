@@ -114,7 +114,7 @@ for k in range(0, K):
     for i in range(0, N):
         if xx[i] == 0:
             x[i] = 0
-# ==========main func=============
+    # =======main func===========
     [T, R] = linkpair(N)
     H = hpara(T, R, N)
     x = iteration(x, y, z, H, Noise)
