@@ -23,43 +23,43 @@ Ptdbm = 40
 fmhz = 2400
 Gt = 2.5
 Gr = 2.5
-Ndbm = -169
+Ndbm = -184
 N = (10 ** (Ndbm / 10)) * 0.001
 B = 5e6
 M1 = 5
 M2 = 15
 M3 = 31
 M = 31
-internumber = 100
+internumber = 50   # 地图数/组数
 testinternumber = 10
 
 
 # %%初始化发送机接收机
-def linkpair(testnumber):
-    t = np.random.random(testnumber) * 2 * np.pi - np.pi  # （0 - pi）之间的值
+def linkpair(linknumber):
+    t = np.random.random(linknumber) * 2 * np.pi - np.pi  # （0 - pi）之间的值
     t = np.expand_dims(t, axis=1)   # 变成列矩阵
     x = np.cos(t)
     y = np.sin(t)
-    i_set = np.arange(0, testnumber, 1)
-    Tx = np.random.uniform(0, region, testnumber)
+    i_set = np.arange(0, linknumber, 1)
+    Tx = np.random.uniform(0, region, linknumber)
     Tx = np.expand_dims(Tx, axis=1)
-    Ty = np.random.uniform(0, region, testnumber)
+    Ty = np.random.uniform(0, region, linknumber)
     Ty = np.expand_dims(Ty, axis=1)
-    len = np.zeros((testnumber, 1))
+    len = np.zeros((linknumber, 1))
     for i in i_set:
         len[i] = np.random.uniform(2, 65)
         x[i] = x[i] * len[i]
         y[i] = y[i] * len[i]
         Rx = Tx + x
         Ry = Ty + y
-        for i in range(0, testnumber):
+        for i in range(0, linknumber):
             if Rx[i] > region or Rx[i] < 0:
                 Rx[i] = Tx[i] - 2 * x[i]
             if Ry[i] > region or Ry[i] < 0:
                 Ry[i] = Ty[i] - 2 * y[i]
         T = np.vstack((Tx.T, Ty.T)).T  # vstack: 以行堆叠列表
         R = np.vstack((Rx.T, Ry.T)).T
-    return T, R, testnumber, len
+    return T, R, linknumber, len
 
 
 # %%计算信道参数
@@ -98,24 +98,28 @@ def density(T, R, M, testnumber):
     return tdensity, rdensity, Tdensity, Rdensity  # 大写存整张表，小写存链路i的收发坐标
 
 
-def zhouwei(x_density, y_density, Tdensity, Rdensity, M0, M, testnumber):
-    # 分别存储每个链路的发射机/接收机的周围环境
-    Tzhouwei = np.zeros((testnumber, M0, M0), int)
-    Rzhouwei = np.zeros((testnumber, M0, M0), int)
+def zhouwei(t_density, r_density, Tdensity, Rdensity, M0, M, linknumber):
+    # 分别存储每个链路的发射机/接收机的周围环境（没有减掉自身）
+    Tzhouwei = np.zeros((linknumber, M0, M0), int)
+    Rzhouwei = np.zeros((linknumber, M0, M0), int)
     a = (M0 - 1) / 2
-    for i in range(0, testnumber):
+    for i in range(0, linknumber):
         for j in range(0, M0):
             for k in range(0, M0):
-                if (x_density[i, 0] - a + j) < 0 or (x_density[i, 1] - a + k) < 0 or (x_density[i, 0] - a + j) > M or (
-                        x_density[i, 1] - a + k) > M:
+                if (t_density[i, 0] - a + j) < 0 or (t_density[i, 1] - a + k) < 0 or (t_density[i, 0] - a + j) > M or (
+                        t_density[i, 1] - a + k) > M:
                     Tzhouwei[i, j, k] = 0
                 else:
-                    Tzhouwei[i, j, k] = Rdensity[int(x_density[i, 0] - a + j), int(x_density[i, 1] - a + k)]
-                if (y_density[i, 0] - a + j) < 0 or (y_density[i, 1] - a + k) < 0 or (y_density[i, 0] - a + j) > M or (
-                        y_density[i, 1] - a + k) > M:
+                    Tzhouwei[i, j, k] = Rdensity[int(t_density[i, 0] - a + j), int(t_density[i, 1] - a + k)]
+                if j == r_density[i, 0] and k == r_density[i, 1]:
+                    Tzhouwei[i, r_density[i, 0], r_density[i, 1]] = Tzhouwei[i, r_density[i, 0], r_density[i, 1]] - 1
+                if (r_density[i, 0] - a + j) < 0 or (r_density[i, 1] - a + k) < 0 or (r_density[i, 0] - a + j) > M or (
+                        r_density[i, 1] - a + k) > M:
                     Rzhouwei[i, j, k] = 0
                 else:
-                    Rzhouwei[i, j, k] = Tdensity[int(y_density[i, 0] - a + j), int(y_density[i, 1] - a + k)]
+                    Rzhouwei[i, j, k] = Tdensity[int(r_density[i, 0] - a + j), int(r_density[i, 1] - a + k)]
+                if j == t_density[i, 0] and k == t_density[i, 1]:
+                    Rzhouwei[i, t_density[i, 0], t_density[i, 1]] = Rzhouwei[i, t_density[i, 0], t_density[i, 1]] - 1
     return Tzhouwei, Rzhouwei   # 三维数组，第一维表示链路，二三维存储环境
 
 
@@ -166,7 +170,7 @@ def rate(H, N, B):
 
 # %%存储数据集
 def storagedataset(i, H, Tzhouwei1, Rzhouwei1, Tzhouwei2, Rzhouwei2, Tzhouwei3, Rzhouwei3, X, length, Taround1,
-                   Taround2, Taround3, Raround1, Raround2, Raround3, Xall, lengthall, Hall):
+                   Taround2, Taround3, Raround1, Raround2, Raround3, Xall, lengthall, Hall, T, R):
     Taround1[i, :, :, :] = Tzhouwei1
     Taround2[i, :, :, :] = Tzhouwei2
     Taround3[i, :, :, :] = Tzhouwei3
@@ -175,32 +179,43 @@ def storagedataset(i, H, Tzhouwei1, Rzhouwei1, Tzhouwei2, Rzhouwei2, Tzhouwei3, 
     Raround3[i, :, :, :] = Rzhouwei3
     Xall[i, :, :] = X
     lengthall[i, :, :] = length
-    Hall[i, :, :] = H
-    return Taround1, Taround2, Taround3, Raround1, Raround2, Raround3, Xall, lengthall, Hall   # 每个数据再加一维
+    Hall[i, :, :] = H                    # 每个数据再加一维，在第一维形成堆叠。第一维表示轮数
+    T[i, :, :] = T
+    R[i, :, :] = R
+    return Taround1, Taround2, Taround3, Raround1, Raround2, Raround3, Xall, lengthall, Hall, T, R
 
 
-def getdata(number, testnumber):
-    Taround1 = np.zeros((number, testnumber, M1, M1))
-    Taround2 = np.zeros((number, testnumber, M2, M2))
-    Taround3 = np.zeros((number, testnumber, M3, M3))
-    Raround1 = np.zeros((number, testnumber, M1, M1))
-    Raround2 = np.zeros((number, testnumber, M2, M2))
-    Raround3 = np.zeros((number, testnumber, M3, M3))
-    Hall = np.zeros((number, testnumber, testnumber))
+def updataLink(T, R, X, linknumber):
+    for i in range(0, linknumber):
+        if X[i, 0] == 0:
+            T[i, :] = 0
+            T[:, i] = 0
+            R[i, :] = 0
+            R[:, i] = 0
+    return T, R
+
+
+def getdata(mapnumber, testnumber):
+    Taround1 = np.zeros((mapnumber, testnumber, M1, M1))
+    Taround2 = np.zeros((mapnumber, testnumber, M2, M2))
+    Taround3 = np.zeros((mapnumber, testnumber, M3, M3))
+    Raround1 = np.zeros((mapnumber, testnumber, M1, M1))
+    Raround2 = np.zeros((mapnumber, testnumber, M2, M2))
+    Raround3 = np.zeros((mapnumber, testnumber, M3, M3))
+    Hall = np.zeros((mapnumber, testnumber, testnumber))
     Sumrate = 0
-    Sumrate1 = 0
+    SumrateAA = 0
     Xall = np.zeros((internumber, testnumber, 1))
     lengthall = np.zeros((internumber, testnumber, 1))
-    for m in range(number):
-        region = 500
+    for m in range(mapnumber):
         T, R, testnumber, length = linkpair(testnumber)
         H = hparameter(T, R, testnumber)
         X = FPLinQ(testnumber, H, N)
-        x_density, y_density, Tdensity, Rdensity = density(T, R, M, testnumber)
-        Tzhouwei1, Rzhouwei1 = zhouwei(x_density, y_density, Tdensity, Rdensity, M1, M, testnumber)
-        Tzhouwei2, Rzhouwei2 = zhouwei(x_density, y_density, Tdensity, Rdensity, M2, M, testnumber)
-        Tzhouwei3, Rzhouwei3 = zhouwei(x_density, y_density, Tdensity, Rdensity, M3, M, testnumber)
-        Taround1, Taround2, Taround3, Raround1, Raround2, Raround3, Xall, lengthall, Hall = storagedataset(m, H,
+        t_density, r_density, Tdensity, Rdensity = density(T, R, M, testnumber)
+        Tzhouwei1, Rzhouwei1 = zhouwei(t_density, r_density, Tdensity, Rdensity, M1, M, testnumber)
+        Tzhouwei2, Rzhouwei2 = zhouwei(t_density, r_density, Tdensity, Rdensity, M2, M, testnumber)
+        Tzhouwei3, Rzhouwei3 = zhouwei(t_density, r_density, Tdensity, Rdensity, M3, M, testnumber)
+        Taround1, Taround2, Taround3, Raround1, Raround2, Raround3, Xall, lengthall, Hall, T, R = storagedataset(m, H,
                                                                                                            Tzhouwei1,
                                                                                                            Rzhouwei1,
                                                                                                            Tzhouwei2,
@@ -216,28 +231,32 @@ def getdata(number, testnumber):
                                                                                                            Raround3,
                                                                                                            Xall,
                                                                                                            lengthall,
-                                                                                                           Hall)
+                                                                                                           Hall,
+                                                                                                           T,
+                                                                                                           R)
         # %%评估FP,AA性能
         H1 = delete(X, H)
         Rate = np.zeros((testnumber, 1))
-        Rate1 = np.zeros((testnumber, 1))
+        RateAA = np.zeros((testnumber, 1))
         Rate = rate(H1, N, B)
-        Rate1 = rate(H, N, B)
+        RateAA = rate(H, N, B)
         sumrate = np.sum(Rate) / 1e6
-        sumrate1 = np.sum(Rate1) / 1e6
+        sumrateAA = np.sum(RateAA) / 1e6
         #       plt.scatter(m,sumrate,s=15, color='g')
         #  plt.scatter(m,sumrate1,s=15, color='r')
         Sumrate = Sumrate + sumrate
-        Sumrate1 = Sumrate1 + sumrate1
-    return Taround1, Taround2, Taround3, Raround1, Raround2, Raround3, Xall, lengthall, Hall, Sumrate, Sumrate1
+        SumrateAA = SumrateAA + sumrateAA
+    return Taround1, Taround2, Taround3, Raround1, Raround2, Raround3, Xall, lengthall, Hall, Sumrate, SumrateAA, T, R
+    # #  存储了m轮数据，一轮数据代表一张拓扑图
+# Taround1第一维表示数据组序号，第二维表示链路序号，三四维表示第一个size的kernel的周围环境
 
 
 # plt.figure(figsize=(13,10))
 # %%CNN,DNN 神经网络搭建
 reg = 0.01
-Taround1, Taround2, Taround3, Raround1, Raround2, Raround3, Xall, lengthall, Hall, Sumrate, Sumrate1 = getdata(
+Taround1, Taround2, Taround3, Raround1, Raround2, Raround3, Xall, lengthall, Hall, Sumrate, SumrateAA, T, R = getdata(
     internumber, trainnumber)
-Taround1t, Taround2t, Taround3t, Raround1t, Raround2t, Raround3t, Xallt, lengthallt, Hallt, Sumratet, Sumrate1t = getdata(
+Taround1t, Taround2t, Taround3t, Raround1t, Raround2t, Raround3t, Xallt, lengthallt, Hallt, Sumratet, SumrateAAt, Tt, Rt = getdata(
     testinternumber, testnumber)
 # CNN part
 it1 = Input(shape=(M1, M1, 1), name='xd1')
@@ -262,48 +281,59 @@ y1 = Flatten()(y1)
 y2 = Flatten()(y2)
 y3 = Flatten()(y3)
 x = keras.layers.concatenate([x1, x2, x3, y1, y2, y3, it7])
-out_0 = Dense(21, activation='relu', W_regularizer=l2(reg))(x)
+out_0 = Dense(21, activation='relu', W_regularizer=l2(reg))(x)   # regualrizer正则项
 out_1 = Dense(21, activation='relu', W_regularizer=l2(reg))(out_0)
 out_2 = Dense(1, activation='sigmoid', W_regularizer=l2(reg))(out_1)
 model = Model(inputs=[it1, it2, it3, it4, it5, it6, it7], outputs=[out_2])
 model.compile(optimizer='rmsprop', loss='binary_crossentropy', metrics=['accuracy'])
+model.summary()
 # %%训练网络
-for i in range(0, internumber):
-    if i != 0:
-        model.load_weights('temple.h5')
-    model.fit([np.expand_dims(Taround1[i, :, :, :], axis=-1), np.expand_dims(Taround2[i, :, :, :], axis=-1),
-               np.expand_dims(Taround3[i, :, :, :], axis=-1), np.expand_dims(Raround1[i, :, :, :], axis=-1),
-               np.expand_dims(Raround2[i, :, :, :], axis=-1), np.expand_dims(Raround3[i, :, :, :], axis=-1),
-               lengthall[i, :, :]], Xall[i, :, :], epochs=1, batch_size=1)
-    model.evaluate([np.expand_dims(Taround1[i, :, :, :], axis=-1), np.expand_dims(Taround2[i, :, :, :], axis=-1),
-                    np.expand_dims(Taround3[i, :, :, :], axis=-1), np.expand_dims(Raround1[i, :, :, :], axis=-1),
-                    np.expand_dims(Raround2[i, :, :, :], axis=-1), np.expand_dims(Raround3[i, :, :, :], axis=-1),
-                    lengthall[i, :, :]], Xall[i, :, :], batch_size=1)
-    model.save_weights('temple.h5')
+for i in range(0, internumber):   # internumber 地图数/组数
+    for k in range(0, 5):
+        if i != 0:   # 用一个链路的数据训练一个模型，并存储，适用于所有链路
+            model.load_weights('temple.h5')  # Taround1第一维表示数据组序号，第二维表示链路序号，三四维表示第一个size的kernel的周围环境
+        model.fit([np.expand_dims(Taround1[i, :, :, :], axis=-1), np.expand_dims(Taround2[i, :, :, :], axis=-1),
+                  np.expand_dims(Taround3[i, :, :, :], axis=-1), np.expand_dims(Raround1[i, :, :, :], axis=-1),
+                  np.expand_dims(Raround2[i, :, :, :], axis=-1), np.expand_dims(Raround3[i, :, :, :], axis=-1),
+                  lengthall[i, :, :]], Xall[i, :, :], epochs=5, batch_size=1)
+#       model.fit([Taround1[i, :, :, :], Taround2[i, :, :, :], Taround3[i, :, :, :], Raround1[i, :, :, :],
+#               Raround2[i, :, :, :], Raround3[i, :, :, :], lengthall[i, :, :]], Xall[i, :, :], epochs=1, batch_size=1)
+        # 为什么要np.expand_dims
+        model.save_weights('temple.h5')
+        evl = model.evaluate([np.expand_dims(Taround1t[i, :, :, :], axis=-1), np.expand_dims(Taround2t[i, :, :, :], axis=-1),
+                             np.expand_dims(Taround3t[i, :, :, :], axis=-1), np.expand_dims(Raround1t[i, :, :, :], axis=-1),
+                             np.expand_dims(Raround2t[i, :, :, :], axis=-1), np.expand_dims(Raround3t[i, :, :, :], axis=-1),
+                             lengthallt[i, :, :]], batch_size=1)  # axis=-1表示最后一维被扩展一维
+        T[i, :, :], R[i, :, :] = updataLink(T[i, :, :], R[i, :, :], Xall[i, :, :], testnumber)
+
 # %%测试网络
-out = np.zeros((testinternumber, testnumber, 1))
+# out = np.zeros((testinternumber, testnumber, 1))
 Sumrate1p = 0
-for i in range(0, testinternumber):
+for i in range(0, testinternumber):   # testinternumber = 10, testnumber = 50
     model.load_weights('temple.h5')
+#  predict函数按batch获得输入数据对应的输出
     res = model.predict([np.expand_dims(Taround1t[i, :, :, :], axis=-1), np.expand_dims(Taround2t[i, :, :, :], axis=-1),
-                         np.expand_dims(Taround3t[i, :, :, :], axis=-1), np.expand_dims(Raround1t[i, :, :, :], axis=-1),
-                         np.expand_dims(Raround2t[i, :, :, :], axis=-1), np.expand_dims(Raround3t[i, :, :, :], axis=-1),
-                         lengthallt[i, :, :]], batch_size=1)  # axis=-1表示最后一维被扩展一维
-    out[i, :, :] = res
-    predict1 = (res > 0.5)
-    predict1 = (predict1 + 0)
+                        np.expand_dims(Taround3t[i, :, :, :], axis=-1), np.expand_dims(Raround1t[i, :, :, :], axis=-1),
+                        np.expand_dims(Raround2t[i, :, :, :], axis=-1), np.expand_dims(Raround3t[i, :, :, :], axis=-1),
+                        lengthallt[i, :, :]], batch_size=1)  # axis=-1表示最后一维被扩展一维
+#    out[i, :, :] = res
+    predict1 = (res > 0.5)   # return True or False
+    predict1 = (predict1 + 0)  # turn Bool into Int
     Hp = delete(predict1, Hallt[i, :, :])
+    if i == 3:
+        print('test-NO.3:', predict1)
     Ratep = np.zeros((testnumber, 1))
     Ratep = rate(Hp, N, B)
     Sumrate1p = Sumrate1p + Ratep
-    Sumrate1p = np.sum(Sumrate1p) / 1e6
+Sumrate1p = np.sum(Sumrate1p) / 1e6
 # %%性能输出
-Sumratet = Sumratet / 100
-Sumrate1t = Sumrate1t / 100
-Sumrate1p = Sumrate1p / 100
-print("average FP sumrate= ", Sumratet)
-print("average AA sumrate1= ", Sumrate1t)
-print("average CNN sumrate1= ", Sumrate1p)
+Sumratet = Sumratet / testinternumber
+Sumrate1t = SumrateAAt / testinternumber
+Sumrate1p = Sumrate1p / testinternumber
+print('N = ', trainnumber)
+print("Average FP sumrate= ", Sumratet, 'MBps')
+print("Average All-Active sumrate1= ", Sumrate1t, 'MBps')
+print("Average CNN sumrate1= ", Sumrate1p, 'MBps')
 """
 print("testnumber = ",testnumber)       
       %%%  plt.figure(figsize=(5,5),dpi=125)%%% 
