@@ -18,6 +18,7 @@ yy = 0
 zz = 0
 xp = 0
 
+
 trans = np.empty([N, 2], dtype=int)
 recv = np.empty([N, 2], dtype=int)
 dist = np.empty([N, 1], dtype=int)
