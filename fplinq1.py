@@ -3,7 +3,7 @@ import math
 import matplotlib.pyplot as plt
 from itertools import chain
 
-N = 1000
+# N = 500
 p = 1
 Gt = 2.5
 Gr = 2.5
@@ -74,7 +74,7 @@ def iteration(x, y, z, H, Noise):
     return x
 
 
-def updateH(H):
+def updateH(H, x):
     H1 = np.copy(H)
     for i in range(0, N):
         if x[i] == 0:
@@ -84,47 +84,80 @@ def updateH(H):
 
 
 def rates(x, H):
+    # return sum-rate of all active links, and the link number
     rate = np.zeros([N, 1], dtype=float)
-    counter = 0
+    actlinknum = 0
     snr = np.zeros((N, 1))
     sum1 = 0
     for i in range(0, N):
         if H[i, i] != 0:
-            counter = counter + 1
+            actlinknum = actlinknum + 1
             for j in range(0, N):
                 sum1 = sum1 + H[i, j]*x[j]
             snr[i] = H[i, i]/(sum1 - H[i, i]*x[i] + Noise)
             sum1 = 0
             rate[i] = 5*np.log2(1 + snr[i])
-            plt.plot([T[i, 0], R[i, 0]], [T[i, 1], R[i, 1]], '-b')
-            plt.axis([0, 1050, 0, 1050])
+            # plt.plot([T[i, 0], R[i, 0]], [T[i, 1], R[i, 1]], '-b')
+            # plt.axis([0, 1050, 0, 1050])
 #           print(counter)
-    return counter, rate
+    return actlinknum, rate
 
 
-K = 100
-count = np.zeros(K)
-ratess = np.zeros(K)
-for k in range(0, K):
-    # 随机初始化
-    xx = np.random.randint(0, 2, (N, 1))  # [low, high).
-    x = np.ones([N, 1], dtype=float)
-    z = np.zeros([N, 1], dtype=float)
-    y = np.zeros([N, 1], dtype=float)
-    for i in range(0, N):
-        if xx[i] == 0:
-            x[i] = 0
-    # =======main func===========
-    [T, R] = linkpair(N)
-    H = hpara(T, R, N)
-    x = iteration(x, y, z, H, Noise)
-    H1 = updateH(H)
-    [count[k], rate] = rates(x, H1)
-    ratess[k] = sum(rate)
-    # for i in range(0, N):
-    #    plt.plot([T[i, 0], R[i, 0]], [T[i, 1], R[i, 1]], '-r')
-    #   plt.axis([0, 1010, 0, 1010])
-print('N =', N)
-print('Aver-activate rate:', sum(count)/(K*N)*100, '%')
-print('Aver-sumrate:', np.sum(ratess)/K, 'Mbps')
-# plt.show()
+step = 11
+mapx = np.zeros(step)
+mapy = np.zeros(step)
+mapz = np.zeros(step)
+mapk = np.zeros(step)
+for kk in range(1, step):
+    N = 100*kk
+    K = 50
+    actlinknum = np.zeros(K)
+    actlinknum1 = np.zeros(K)
+    ratess = np.zeros(K)
+    ratess1 = np.zeros(K)
+    for k in range(0, K):
+        # ===随机初始化 =====
+        xx = np.random.randint(0, 2, (N, 1))  # [low, high).
+        x = np.ones([N, 1], dtype=float)
+        x1 = np.ones([N, 1], dtype=float)
+        z = np.zeros([N, 1], dtype=float)
+        y = np.zeros([N, 1], dtype=float)
+        for i in range(0, N):
+            if xx[i] == 0:
+                x[i] = 0
+        # =======main func===========
+        [T, R] = linkpair(N)
+        H = hpara(T, R, N)
+        x = iteration(x, y, z, H, Noise)
+        H0 = updateH(H, x)
+        H1 = updateH(H, x1)
+        actlinknum[k], rate = rates(x, H0)
+        actlinknum1[k], rate1 = rates(x1, H1)
+        ratess[k] = sum(rate)
+        ratess1[k] = sum(rate1)
+    mapx[kk] = N
+    mapy[kk] = sum(actlinknum)/(K*N)*100
+    mapz[kk] = np.sum(ratess)/K
+    mapk[kk] = np.sum(ratess1)/K
+    print('N =', N)
+    print('Aver-activate rate:', sum(actlinknum)/(K*N)*100, '%')
+    print('Aver-sumrate:', np.sum(ratess)/K, 'Mbps')
+    print('All-Active-Aver-sumrate:', np.sum(ratess1)/K, 'Mbps')
+print(mapx)
+print(mapy)
+print(mapz)
+print(mapk)
+plt.figure(1)
+plt.plot(mapx, mapy, '-*')
+plt.axis([100, 1000, 0, 50])
+plt.xlabel('N-links')
+plt.ylabel('Activa-Rate: %')
+plt.legend()  # 展示图例
+plt.figure(2)
+plt.plot(mapx, mapz, '-*', label='FP')
+plt.plot(mapx, mapk, '-o', label='All-Active')
+plt.xlabel('N-links')
+plt.ylabel('Sum-rates/Mbps')
+plt.axis([0, 1000, 0, 3000])
+plt.legend()
+plt.show()
