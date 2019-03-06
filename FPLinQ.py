@@ -126,3 +126,4 @@ for i in range(0, N):
 print('Activate rate:', counter/N)
 print('sumrate:', np.sum(rate))
 plt.show()
+
