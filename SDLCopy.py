@@ -52,15 +52,15 @@ def linkpair(linknumber):
         len[i] = np.random.uniform(2, 65)
         x[i] = x[i] * len[i]
         y[i] = y[i] * len[i]
-        Rx = Tx + x
-        Ry = Ty + y
-        for i in range(0, linknumber):
-            if Rx[i] > region or Rx[i] < 0:
-                Rx[i] = Tx[i] - 2 * x[i]
-            if Ry[i] > region or Ry[i] < 0:
-                Ry[i] = Ty[i] - 2 * y[i]
-        T = np.vstack((Tx.T, Ty.T)).T  # vstack: 以行堆叠列表
-        R = np.vstack((Rx.T, Ry.T)).T
+    Rx = Tx + x
+    Ry = Ty + y
+    for i in range(0, linknumber):
+        if Rx[i] > region or Rx[i] < 0:
+            Rx[i] = Tx[i] - 2 * x[i]
+        if Ry[i] > region or Ry[i] < 0:
+            Ry[i] = Ty[i] - 2 * y[i]
+    T = np.vstack((Tx.T, Ty.T)).T  # vstack: 以行堆叠列表
+    R = np.vstack((Rx.T, Ry.T)).T
     return T, R, linknumber, len
 
 
@@ -105,7 +105,7 @@ def density(T, R, M, testnumber):
 
 
 def zhouwei(t_density, r_density, Tdensity, Rdensity, M0, M, linknumber):
-    # 分别存储每个链路的发射机/接收机的周围环境（没有减掉自身）
+    # 分别存储每个链路的发射机/接收机的周围环境（有减掉自身）
     Tzhouwei = np.zeros((linknumber, M0, M0), int)
     Rzhouwei = np.zeros((linknumber, M0, M0), int)
     a = (M0 - 1) / 2
