@@ -5,6 +5,7 @@ modified ("filtered") version of f. In this interpretation we call g the filter.
 like x rather than a time variable like t, we call the operation spatial convolution.
 """
 import numpy as np
+from keras import optimizers
 from keras import regularizers
 import matplotlib.pyplot as plt
 import math
@@ -19,21 +20,20 @@ import linklist
 
 # $$$$$$$$$ 初始化  $$$$$$$$$$$
 trainnumber = 50   # 训练组链路数量
-testnumber = 50   # 测试组链路数量
-region = 300
+region = 500
 Ptdbm = 40
 fmhz = 2400
 Gt = 2.5
 Gr = 2.5
 Ndbm = -169
-N = (10 ** (Ndbm / 10)) * 0.001
+Noise = (10 ** (Ndbm / 10)) * 0.001
 B = 5e6
 M1 = 5
 M2 = 15
 M3 = 31
 M = 31
 internumber = 100   # 地图数/组数
-testinternumber = 50   # 验证集数量
+testMAPnumber = 100   # 测试集数量
 
 
 # %%初始化发送机接收机
@@ -62,23 +62,21 @@ def linkpair(linknumber):
             Ry[i] = Ty[i] - 2 * y[i]
     T = np.vstack((Tx.T, Ty.T)).T  # vstack: 以行堆叠列表
     R = np.vstack((Rx.T, Ry.T)).T
-    return T, R, linknumber, len
+    return T, R, len
 
 
 # %%计算信道参数
-def hparameter(T, R, testnumber):
+def hparameter(T, R, linknumber):
     # 返回N*N维信道状态矩阵H
-    l = np.zeros((testnumber, testnumber))
-    lenlog = np.zeros((testnumber, testnumber))
-    H = np.zeros((testnumber, testnumber))
-    for i in range(0, testnumber):
-        for j in range(0, testnumber):
-            l[i, j] = math.sqrt((T[i, 0] - R[j, 0]) ** 2 + (T[i, 1] - R[j, 1]) ** 2)
-            lenlog[i, j] = 20 * math.log(l[i, j] / 1000, 10)
-    L = 32.45 + 20 * math.log(fmhz, 10) - Gt - Gr
-    L = np.ones((testnumber, testnumber)) * L + lenlog
-    Prdbm = Ptdbm - L
-    for i in range(0, testnumber):
+    h = np.zeros([linknumber, linknumber], dtype=float)
+    H = np.zeros([linknumber, linknumber], dtype=float)
+    for i in range(0, linknumber):
+        for j in range(0, linknumber):
+            h[i, j] = 32.45 + 20 * math.log10(np.sqrt((T[j, 0] - R[i, 0]) ** 2 + (T[j, 1] - R[i, 1]) ** 2) / 1000) \
+                      + 20 * math.log(fmhz, 10) - Gt - Gr
+    # 当Pi=1时， H[ii]数值上等于pi*h[i,j]^2,
+    Prdbm = Ptdbm - h  # (L=Pt/Pr)
+    for i in range(0, linknumber):
         a = Prdbm[i] / 10
         H[i] = (10 ** a) * 0.001
     return H
@@ -110,7 +108,7 @@ def density(T, R, M, testnumber):
 # 返回每个发射接收机的周围环境信息（准备做卷积）
 def zhouwei(t_density, r_density, Tdensity, Rdensity, M0, M, linknumber):
     # 返回每个发射接收机的周围环境信息（准备做卷积）
-    # 分别存储每个链路的发射机/接收机的周围环境（减掉了自身）
+    # 分别存储每个链路的发射机/接收机的周围环境（减掉自身）
     Tzhouwei = np.zeros((linknumber, M0, M0), int)
     Rzhouwei = np.zeros((linknumber, M0, M0), int)
     a = (M0 - 1) / 2
@@ -135,35 +133,30 @@ def zhouwei(t_density, r_density, Tdensity, Rdensity, M0, M, linknumber):
 
 
 # %%FPLinQ算法， 返回X，表示每个链路的激活状态信息
-def FPLinQ(number, H, N):
+def FPLinQ(x, y, z, H, linknumber, Noise):
     maxiteration = 100
-    wt = np.ones(number)
-    x = np.ones((number, 1))
-    X = np.ones(number)
-    Z = np.zeros(number)
-    Y = np.zeros(number)
-    for k in range(0, maxiteration):
-        for i in range(0, number):
-            hi = H[i, :]
-            Z[i] = (H[i, i] * X[i]) / (np.dot(hi.T, X) - H[i, i] * X[i] + N)
-            Y[i] = np.sqrt(wt[i] * (1 + Z[i]) * H[i, i] * X[i]) / float(np.dot(hi.T, X) + N)
-            y = Y[i] * np.sqrt(wt[i] * (1 + Z[i]) * H[i, i]) / (np.dot(hi.T, np.multiply(Y, Y)))
-            X[i] = min(1, y * y)
-    for i in range(0, number):
-        h = H[i, :]
-        Q = 2 * Y[i] * np.sqrt(wt[i] * (1 + Z[i]) * H[i, i] * X[i]) - X[i] * (np.dot(hi.T, np.multiply(Y, Y)))
+    w = 1
+    p = 1
+    for t in range(0, maxiteration):
+        for i in range(0, linknumber):
+            z[i] = (H[i, i] * x[i]) / (np.dot(H[i, :].T, x) - H[i, i] * x[i] + Noise)  # numpyarray.T: 转置
+            y[i] = math.sqrt(w * (1 + z[i]) * H[i, i] * p * x[i]) / (np.dot(H[i, :].T, x) + Noise)
+            xxx = (y[i] * np.sqrt(w * (1 + z[i]) * H[i, i] * p)) / (np.dot(H[:, i].T, (np.multiply(y, y))))
+            x[i] = min(1, xxx * xxx)
+    for i in range(0, linknumber):
+        Q = 2 * y[i] * math.sqrt(w * (1 + z[i]) * H[i, i]) - (np.dot(H[:, i].T, np.multiply(y, y)))
         if Q > 0:
-            x[i, :] = 1
+            x[i] = 1
         else:
-            x[i, :] = 0
+            x[i] = 0
     return x
 
 
 # %%清除（置0）被关闭（x为0）的链路的信道信息，以及跟这些链路相关的交叉（干扰）信道信息，返回余下信道状态信息
-def delete(X, H):
+def updateH(x, H, linknumber):
     H1 = np.copy(H)
-    for i in range(0, testnumber):
-        if X[i, 0] == 0:
+    for i in range(0, linknumber):
+        if x[i] == 0:
             H1[i, :] = 0
             H1[:, i] = 0
     return H1
@@ -171,15 +164,21 @@ def delete(X, H):
 
 #  计算和速率
 #  返回rate,存储每个链路的速率
-def rate(H, N, B):
-    rate = np.zeros((testnumber, 1))
-    snr = np.zeros((testnumber, 1))
-    for i in range(0, testnumber):
+def rate(x, H, Noise, linknumber):
+    rate = np.zeros([linknumber, 1], dtype=float)
+    actlinknum = 0
+    snr = np.zeros((linknumber, 1))
+    sum1 = 0
+    for i in range(0, linknumber):
         if H[i, i] != 0:
-            hi = H[i, :]
-            snr[i] = H[i, i] / (np.sum(hi) - H[i, i] + N)
-            rate[i] = B * math.log(snr[i] + 1, 2)
-    return rate
+            actlinknum = actlinknum + 1
+            for j in range(0, linknumber):
+                sum1 = sum1 + H[i, j] * x[j]
+            snr[i] = H[i, i] / (sum1 - H[i, i] * x[i] + Noise)
+            sum1 = 0
+            rate[i] = 5 * np.log2(1 + snr[i])
+    sumrate = sum(rate)
+    return sumrate
 
 
 # %%存储数据集
@@ -200,43 +199,50 @@ def storagedataset(i, H, tdensity, rdensity, tden, rden, Tzhouwei1, Rzhouwei1, T
     return tden, rden, Taround1, Taround2, Taround3, Raround1, Raround2, Raround3, Xall, lengthall, Hall
 
 
-def getdata(mapnumber, testnumber):
-    Taround1 = np.zeros((mapnumber, testnumber, M1, M1))
-    Taround2 = np.zeros((mapnumber, testnumber, M2, M2))
-    Taround3 = np.zeros((mapnumber, testnumber, M3, M3))
-    Raround1 = np.zeros((mapnumber, testnumber, M1, M1))
-    Raround2 = np.zeros((mapnumber, testnumber, M2, M2))
-    Raround3 = np.zeros((mapnumber, testnumber, M3, M3))
-    tden = np.zeros((mapnumber, testnumber, 3))
-    rden = np.zeros((mapnumber, testnumber, 3))
-    Hall = np.zeros((mapnumber, testnumber, testnumber))
+def getdata(mapnumber, linknumber):
+    Taround1 = np.zeros((mapnumber, linknumber, M1, M1))
+    Taround2 = np.zeros((mapnumber, linknumber, M2, M2))
+    Taround3 = np.zeros((mapnumber, linknumber, M3, M3))
+    Raround1 = np.zeros((mapnumber, linknumber, M1, M1))
+    Raround2 = np.zeros((mapnumber, linknumber, M2, M2))
+    Raround3 = np.zeros((mapnumber, linknumber, M3, M3))
+    tden = np.zeros((mapnumber, linknumber, 3))
+    rden = np.zeros((mapnumber, linknumber, 3))
+    Hall = np.zeros((mapnumber, linknumber, linknumber))
     Sumrate = 0
     SumrateAA = 0
-    Xall = np.zeros((internumber, testnumber, 1))
-    lengthall = np.zeros((internumber, testnumber, 1))
+    Xall = np.zeros((internumber, linknumber, 1))
+    lengthall = np.zeros((internumber, linknumber, 1))
     for m in range(0, mapnumber):
-        T, R, testnumber, length = linkpair(testnumber)
-        H = hparameter(T, R, testnumber)
-        X = FPLinQ(testnumber, H, N)
+        #  ===随机初始化 =====
+        xx = np.random.randint(0, 2, (linknumber, 1))  # [low, high).
+        x = np.ones([linknumber, 1], dtype=float)
+        x1 = np.ones([linknumber, 1], dtype=float)  # AA
+        z = np.zeros([linknumber, 1], dtype=float)
+        y = np.zeros([linknumber, 1], dtype=float)
+        #        xr = np.random.randint(0, 2, [linknumber, 1]) # random
+        #        for i in range(0, linknumber):
+        #            if xx[i] == 0:
+        #                x[i] = 0
+        T, R, length = linkpair(linknumber)
+        H = hparameter(T, R, linknumber)
+        x = FPLinQ(x, y, z, H, linknumber, Noise)
         # $$$$$$$$ 评估FP,AA性能
-        H1 = delete(X, H)    # FP算法-更新信道状态信息
-        Rate = np.zeros((testnumber, 1))
-        RateAA = np.zeros((testnumber, 1))
-        Rate = rate(H1, N, B)
-        RateAA = rate(H, N, B)
-        sumrate = np.sum(Rate) / 1e6
-        sumrateAA = np.sum(RateAA) / 1e6
-        Sumrate = Sumrate + sumrate         # FP算法和速率
-        SumrateAA = SumrateAA + sumrateAA   # AA算法和速率
+        H1 = updateH(x, H, linknumber)    # FP算法-更新信道状态信息
+        RateFP = rate(x, H1, Noise, linknumber)
+        RateAA = rate(x1, H, Noise, linknumber)
+        Sumrate = Sumrate + RateFP      # FP算法和速率
+        SumrateAA = SumrateAA + RateAA  # AA算法和速率
         # =================================存储数据================================================ #
-        tdensity, rdensity, Tdensity, Rdensity = density(T, R, M, testnumber)
-        Tzhouwei1, Rzhouwei1 = zhouwei(tdensity, rdensity, Tdensity, Rdensity, M1, M, testnumber)
-        Tzhouwei2, Rzhouwei2 = zhouwei(tdensity, rdensity, Tdensity, Rdensity, M2, M, testnumber)
-        Tzhouwei3, Rzhouwei3 = zhouwei(tdensity, rdensity, Tdensity, Rdensity, M3, M, testnumber)
+        tdensity, rdensity, Tdensity, Rdensity = density(T, R, M, linknumber)
+        Tzhouwei1, Rzhouwei1 = zhouwei(tdensity, rdensity, Tdensity, Rdensity, M1, M, linknumber)
+        Tzhouwei2, Rzhouwei2 = zhouwei(tdensity, rdensity, Tdensity, Rdensity, M2, M, linknumber)
+        Tzhouwei3, Rzhouwei3 = zhouwei(tdensity, rdensity, Tdensity, Rdensity, M3, M, linknumber)
         tden, rden, Taround1, Taround2, Taround3, Raround1, Raround2, Raround3, Xall, lengthall, Hall = storagedataset(
-            m, H, tdensity, rdensity, tden, rden, Tzhouwei1, Rzhouwei1, Tzhouwei2, Rzhouwei2, Tzhouwei3, Rzhouwei3, X,
+            m, H, tdensity, rdensity, tden, rden, Tzhouwei1, Rzhouwei1, Tzhouwei2, Rzhouwei2, Tzhouwei3, Rzhouwei3, x,
             length, Taround1, Taround2, Taround3, Raround1, Raround2, Raround3, Xall, lengthall, Hall)
-        print(m)
+        print(m, 'and fp rates now is', Sumrate, '\t', 'and AA rates is', SumrateAA)
+        # ======================================================================================= #
     return tden, rden, Taround1, Taround2, Taround3,\
            Raround1, Raround2, Raround3, Xall, lengthall, Hall, Sumrate, SumrateAA
     # #  存储了m轮数据，一轮数据代表一张拓扑图
@@ -244,64 +250,70 @@ def getdata(mapnumber, testnumber):
 
 
 def creat_model(reg):
-    it1 = Input(shape=(M1, M1, 1), name='xd1')
-    it2 = Input(shape=(M2, M2, 1), name='xd2')
-    it3 = Input(shape=(M3, M3, 1), name='xd3')
-    it4 = Input(shape=(M1, M1, 1), name='yd1')
-    it5 = Input(shape=(M2, M2, 1), name='yd2')
-    it6 = Input(shape=(M3, M3, 1), name='yd3')  # 输入
-    it7 = Input(shape=(1,), name='lenth')  # 输入1维，不指定个数
+    in1 = Input(shape=(M1, M1, 1))
+    in2 = Input(shape=(M2, M2, 1))
+    in3 = Input(shape=(M3, M3, 1))
+    in4 = Input(shape=(M1, M1, 1))
+    in5 = Input(shape=(M2, M2, 1))
+    in6 = Input(shape=(M3, M3, 1))  # 输入
+    in7 = Input(shape=(1,))  # 输入1维，不指定个数
 
-    x1 = Conv2D(1, kernel_size=M1, padding='same', activation='relu')(it1)
-    x2 = Conv2D(1, kernel_size=M2, padding='same', activation='relu')(it2)
-    x3 = Conv2D(1, kernel_size=M3, padding='same', activation='relu')(it3)
-    y1 = Conv2D(1, kernel_size=M1, padding='same', activation='relu')(it4)
-    y2 = Conv2D(1, kernel_size=M2, padding='same', activation='relu')(it5)
-    y3 = Conv2D(1, kernel_size=M3, padding='same', activation='relu')(it6)
+    in_1 = Conv2D(1, kernel_size=M1, padding='same', activation='relu')(in1)   # 1代表通道1
+    in_2 = Conv2D(1, kernel_size=M2, padding='same', activation='relu')(in2)
+    in_3 = Conv2D(1, kernel_size=M3, padding='same', activation='relu')(in3)
+    in_4 = Conv2D(1, kernel_size=M1, padding='same', activation='relu')(in4)
+    in_5 = Conv2D(1, kernel_size=M2, padding='same', activation='relu')(in5)
+    in_6 = Conv2D(1, kernel_size=M3, padding='same', activation='relu')(in6)
 
-    x1 = Flatten()(x1)
-    x2 = Flatten()(x2)
-    x3 = Flatten()(x3)
-    y1 = Flatten()(y1)
-    y2 = Flatten()(y2)
-    y3 = Flatten()(y3)
-    x = keras.layers.concatenate([x1, x2, x3, y1, y2, y3, it7])
-    out_0 = Dense(30, activation='relu', kernel_regularizer=regularizers.l2(reg))(x)  # regualrizer正则项
-    out_1 = Dense(30, activation='relu', kernel_regularizer=regularizers.l2(reg))(out_0)
-    out_2 = Dense(1, activation='sigmoid', kernel_regularizer=regularizers.l2(reg))(out_1)
-    model = Model(inputs=[it1, it2, it3, it4, it5, it6, it7], outputs=[out_2])
-    model.compile(optimizer='rmsprop', loss='binary_crossentropy', metrics=['accuracy'])
+    x1 = Flatten()(in_1)
+    x2 = Flatten()(in_2)
+    x3 = Flatten()(in_3)
+    y1 = Flatten()(in_4)
+    y2 = Flatten()(in_5)
+    y3 = Flatten()(in_6)
+    x = keras.layers.concatenate([x1, x2, x3, y1, y2, y3, in7])
+    out_0 = Dense(30, activation='relu', kernel_regularizer=regularizers.l2(0.01))(x)  # regualrizer正则项
+    out_1 = Dense(30, activation='relu', kernel_regularizer=regularizers.l2(0.01))(out_0)
+    out_2 = Dense(1, activation='sigmoid', kernel_regularizer=regularizers.l2(0.01))(out_1)
+    model = Model(inputs=[in1, in2, in3, in4, in5, in6, in7], outputs=[out_2])
+    model.compile(optimizer=optimizers.RMSprop(lr=0.01), loss='binary_crossentropy', metrics=['accuracy'])  # lr = 0.001参数怎么调
     model.summary()
     return model
 
 
-def updatemap(predict, tden, rden, lens, testnumber, M1, M2, M3):
+def updatemap(predict, tden, rden, lens, linknumber, M1, M2, M3):
     # 直接返回七个输入，但是输入tden, rden, len暂时无法获取
     tdenx = np.copy(tden)
     rdenx = np.copy(rden)
     len = np.copy(lens)
-    Tdx = np.zeros((testnumber, testnumber))
-    Rdx = np.zeros((testnumber, testnumber))
-    for j in range(0, testnumber):
+    Tdx = np.zeros((linknumber, linknumber))
+    Rdx = np.zeros((linknumber, linknumber))
+    for j in range(0, linknumber):
         tdenx[j, 2] = predict[j]
         rdenx[j, 2] = predict[j]
         Tdx[int(tdenx[j, 0]), int(tdenx[j, 1])] = Tdx[int(tdenx[j, 0]), int(tdenx[j, 1])] + tdenx[j, 2]
         Rdx[int(rdenx[j, 0]), int(rdenx[j, 1])] = Tdx[int(rdenx[j, 0]), int(rdenx[j, 1])] + rdenx[j, 2]
-    Tzw1, Rzw1 = zhouwei(tdenx, rdenx, Tdx, Rdx, M1, M, testnumber)
-    Tzw2, Rzw2 = zhouwei(tdenx, rdenx, Tdx, Rdx, M2, M, testnumber)
-    Tzw3, Rzw3 = zhouwei(tdenx, rdenx, Tdx, Rdx, M3, M, testnumber)
+    Tzw1, Rzw1 = zhouwei(tdenx, rdenx, Tdx, Rdx, M1, M, linknumber)
+    Tzw2, Rzw2 = zhouwei(tdenx, rdenx, Tdx, Rdx, M2, M, linknumber)
+    Tzw3, Rzw3 = zhouwei(tdenx, rdenx, Tdx, Rdx, M3, M, linknumber)
     return Tzw1, Rzw1, Tzw2, Rzw2, Tzw3, Rzw3, len
 
 
 def trainmodel(model, Tzw1, Rzw1, Tzw2, Rzw2, Tzw3, Rzw3, length, X):
+    tdenv, rdenv, Taround1v, Taround2v, Taround3v, Raround1v, Raround2v, Raround3v, \
+    Xallv, lengthallv, Hallv, Sumratev, SumrateAAv = getdata(1, 50)  # 生成交叉验证集
     model.fit([np.expand_dims(Tzw1, axis=-1), np.expand_dims(Tzw2, axis=-1),
                np.expand_dims(Tzw3, axis=-1), np.expand_dims(Rzw1, axis=-1),
                np.expand_dims(Rzw2, axis=-1), np.expand_dims(Rzw3, axis=-1),
-               length], X, epochs=8, batch_size=1)
-    model.evaluate([np.expand_dims(Tzw1, axis=-1), np.expand_dims(Tzw2, axis=-1),
-                    np.expand_dims(Tzw3, axis=-1), np.expand_dims(Rzw1, axis=-1),
-                    np.expand_dims(Rzw2, axis=-1), np.expand_dims(Rzw3, axis=-1),
-                    length], X, batch_size=1)
+               length], X, epochs=8, batch_size=10, validation_data=(
+                   [np.expand_dims(Taround1v[0, :, :, :], axis=-1), np.expand_dims(Taround2v[0, :, :, :], axis=-1),
+                    np.expand_dims(Taround3v[0, :, :, :], axis=-1), np.expand_dims(Raround1v[0, :, :, :], axis=-1),
+                    np.expand_dims(Raround2v[0, :, :, :], axis=-1), np.expand_dims(Raround3v[0, :, :, :], axis=-1),
+                    lengthallv[0, :, 0]], Xallv[1, :, 0]))
+#    model.evaluate([np.expand_dims(Tzw1, axis=-1), np.expand_dims(Tzw2, axis=-1),
+#                    np.expand_dims(Tzw3, axis=-1), np.expand_dims(Rzw1, axis=-1),
+#                    np.expand_dims(Rzw2, axis=-1), np.expand_dims(Rzw3, axis=-1),
+#                    length], X, batch_size=1)
     #  predict函数按batch获得输入数据对应的输出
     xt = model.predict(
         [np.expand_dims(Tzw1, axis=-1), np.expand_dims(Tzw2, axis=-1),
@@ -314,18 +326,19 @@ def trainmodel(model, Tzw1, Rzw1, Tzw2, Rzw2, Tzw3, Rzw3, length, X):
 
 reg = 0.01
 model = creat_model(reg)
+
 # $$$$$ 训练网络  $$$$$$$
 xold = np.zeros((trainnumber, 1))      # 训练前的x
 xupdate = np.zeros((trainnumber, 1))   # 送入更新地图的x
 xpred = np.zeros((trainnumber, 1))     # 训练后的x
-
 tden, rden, Taround1, Taround2, Taround3, Raround1, Raround2, Raround3,\
     Xall, lengthall, Hall, Sumrate, SumrateAA = getdata(internumber, trainnumber)   # internumber:地图数 ， trainnumber: 链路数
 for i in range(0, internumber):   # internumber 地图数/组数
+    print('Now is map:', i)
     xpred, model = trainmodel(model, Taround1[i, :, :, :], Raround1[i, :, :, :], Taround2[i, :, :, :], Raround2[i, :, :, :], Taround3[i, :, :, :], Raround3[i, :, :, :],
                                   lengthall[i, :, 0], Xall[i, :, 0])
     xold = Xall[i, :, :]
-    for five in range(0, 5):
+    for five in range(0, 3):
         # 每个链路的output有50%的机率feedback
         for fb in range(0, trainnumber):
             a = np.random.uniform(0, 1)
@@ -338,8 +351,10 @@ for i in range(0, internumber):   # internumber 地图数/组数
                                                                lengthall[i, :, 0], trainnumber, M1, M2, M3)
         xpred, model = trainmodel(model, Tzw1, Rzw1, Tzw2, Rzw2, Tzw3, Rzw3, length, Xall[i, :, 0])
         xold = xupdate
-model.save('20190319-1.h5')
+model.save('20190321-last.h5')
+
 # $$$$$ 测试网络  $$$$$$$
+
 step = 5
 axisX = np.zeros(step)
 sumfp = np.zeros(step)
@@ -347,12 +362,12 @@ sumdl = np.zeros(step)
 sumaa = np.zeros(step)
 for nk in range(1, step):
     testnumber = 50*nk
-    tdent, rdent, Taround1t, Taround2t, Taround3t, Raround1t, Raround2t, Raround3t, Xallt, lengthallt, Hallt, Sumratet, \
-        SumrateAAt = getdata(testinternumber, testnumber)  # testinternumber:测试组地图数， testnumber: 测试集链路数
+    tdent, rdent, Taround1t, Taround2t, Taround3t, Raround1t, Raround2t, Raround3t, Xallt, lengthallt, Hallt, Sumratet,\
+        SumrateAAt = getdata(testMAPnumber, testnumber)  # testinternumber:测试组地图数， testnumber: 测试集链路数
     Sumrate1p = 0
-    for i in range(0, testinternumber):   # testinternumber = 10, testnumber = 50
-        #  model.load_weights('20190317.h5')
-        #  predict函数按batch获得输入数据对应的输出
+    for i in range(0, testMAPnumber):   # testinternumber = 10, testnumber = 50
+        model.load_weights('20190321-last.h5')
+        # predict函数按batch获得输入数据对应的输出
         res = model.predict([np.expand_dims(Taround1t[i, :, :, :], axis=-1), np.expand_dims(Taround2t[i, :, :, :], axis=-1),
                             np.expand_dims(Taround3t[i, :, :, :], axis=-1), np.expand_dims(Raround1t[i, :, :, :], axis=-1),
                             np.expand_dims(Raround2t[i, :, :, :], axis=-1), np.expand_dims(Raround3t[i, :, :, :], axis=-1),
@@ -360,17 +375,15 @@ for nk in range(1, step):
         #    out[i, :, :] = res
         predict1 = (res > 0.5)  # return True or False
         predict1 = (predict1 + 0)  # turn Bool into Int
-        Hp = delete(predict1, Hallt[i, :, :])
-        if i == 3:
-            print('test-NO.3:', predict1)
-        Ratep = np.zeros((testnumber, 1))
-        Ratep = rate(Hp, N, B)
-        Sumrate1p = Sumrate1p + Ratep
-    Sumrate1p = np.sum(Sumrate1p) / 1e6
+        Hp = updateH(predict1, Hallt[i, :, :], testnumber)
+        if i == 4:
+            print('test-Map_NO.3:', predict1.T)
+        RateDL = rate(predict1, Hp, Noise, testnumber)
+        Sumrate1p = Sumrate1p + RateDL
     # $$$$$$$output
-    Sumratet = Sumratet / testinternumber
-    Sumrate1t = SumrateAAt / testinternumber
-    Sumrate1p = Sumrate1p / testinternumber
+    Sumratet = Sumratet / testMAPnumber
+    Sumrate1t = SumrateAAt / testMAPnumber
+    Sumrate1p = Sumrate1p / testMAPnumber
     axisX[nk] = testnumber
     sumdl[nk] = Sumrate1p
     sumfp[nk] = Sumratet
@@ -385,11 +398,18 @@ plt.plot(axisX, sumfp, '-o', label='FP')
 plt.plot(axisX, sumaa, '-.', label='AA')
 plt.xlabel('N-links')
 plt.ylabel('Sum-rates/Mbps')
-plt.axis([0, 300, 0, 500])
+plt.axis([0, (step-1)*50, 0, max(sumfp[step-1], sumdl[step-1])])
 plt.legend()
+plt.savefig("0321-1.png")
 plt.show()
+
+
 """
 原理完美，但是！训练数据(FP)是否optimal?????这是个问题
+When the layouts contain links of similar distances, many
+distinct  local  optima  emerge,  which  tend  to  confuse  the
+supervised learning process. 
+
 """
 
 
