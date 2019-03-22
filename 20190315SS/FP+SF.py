@@ -12,7 +12,7 @@ fmhz = 2400
 NdBm = -184
 Noise = (10 ** (NdBm/10))*0.001
 w = 1
-region = 1000
+region = 500
 B = 5e6
 
 
@@ -43,17 +43,17 @@ def linkpair(N):
     return T, R, len
 
 
-def hpara(T, R, N):
+def hpara(T, R, linknumber):
     # 产生信道参数H矩阵，采用对数衰落模型。return H数值上等于
-    h = np.zeros([N, N], dtype=float)
-    H = np.zeros([N, N], dtype=float)
-    for i in range(0, N):
-        for j in range(0, N):
+    h = np.zeros([linknumber, linknumber], dtype=float)
+    H = np.zeros([linknumber, linknumber], dtype=float)
+    for i in range(0, linknumber):
+        for j in range(0, linknumber):
             h[i, j] = 32.45 + 20*math.log10(np.sqrt((T[j, 0] - R[i, 0])**2 + (T[j, 1] - R[i, 1])**2)/1000)\
                       + 20*math.log(fmhz, 10)-Gt-Gr
     # 当Pi=1时， H[ii]数值上等于pi*h[i,j]^2,
     Prdbm = Ptdbm - h     # (L=Pt/Pr)
-    for i in range(0, N):
+    for i in range(0, linknumber):
         a = Prdbm[i] / 10
         H[i] = (10 ** a) * 0.001
     return H
@@ -115,15 +115,12 @@ def rates(x, H, linknumber):
             snr[i] = H[i, i]/(sum1 - H[i, i]*x[i] + Noise)
             sum1 = 0
             rate[i] = 5*np.log2(1 + snr[i])
-            # plt.plot([T[i, 0], R[i, 0]], [T[i, 1], R[i, 1]], '-b')
-            # plt.axis([0, 1050, 0, 1050])
-#           print(counter)
     return actlinknum, rate
 
 
 def sortlen(len, aclinknum, linknumber):
     lenc = np.copy(len)
-    aclink = np.array([21, 31, 39, 47, 53, 60, 65, 70, 77, 82])
+    aclink = np.array([21, 31, 39, 47, 53, 60, 65, 70, 77, 82])  # 只用于链路数量为100的整数倍的情况下
     lensorted = np.zeros((linknumber, 1))
     xs = np.zeros((linknumber, 1), dtype=float)
     lensorted = quick_sort(lenc, 1, linknumber-1)   # 0号最小
@@ -173,17 +170,17 @@ mapk = np.zeros(step)
 mapl = np.zeros(step)
 mapr = np.zeros(step)
 for kk in range(1, step):
-    N = 100*kk
-    K = 100
-    actlinknum = np.zeros(K)
-    actlinknum1 = np.zeros(K)
-    actlinknum2 = np.zeros(K)
-    actlinknum3 = np.zeros(K)
-    ratess = np.zeros(K)
-    ratess1 = np.zeros(K)
-    ratess2 = np.zeros(K)
-    ratess3 = np.zeros(K)
-    for k in range(0, K):
+    N = 50*kk
+    MAPS = 100
+    actlinknum = np.zeros(MAPS)
+    actlinknum1 = np.zeros(MAPS)
+    actlinknum2 = np.zeros(MAPS)
+    actlinknum3 = np.zeros(MAPS)
+    ratess = np.zeros(MAPS)
+    ratess1 = np.zeros(MAPS)
+    ratess2 = np.zeros(MAPS)
+    ratess3 = np.zeros(MAPS)
+    for k in range(0, MAPS):
         #  ===随机初始化 =====
         xx = np.random.randint(0, 2, (N, 1))  # [low, high).
         x = np.ones([N, 1], dtype=float)
@@ -192,23 +189,19 @@ for kk in range(1, step):
         y = np.zeros([N, 1], dtype=float)
         xs = np.zeros([N, 1], dtype=float)
         xr = np.random.randint(0, 2, [N, 1])
-        for i in range(0, N):
+        """
+         for i in range(0, N):
             if xx[i] == 0:
                 x[i] = 0
+        """
         # =======main func===========
         [T, R, length] = linkpair(N)
         H = hpara(T, R, N)
-        x = iteration3(x, y, z, H, Noise, N)
-        H0 = updateH(H, x, N)
-        H1 = updateH(H, x1, N)
+        x = iteration(x, y, z, H, Noise, N)
+        H0 = updateH(H, x, N)   # FP
+        H1 = updateH(H, x1, N)  # AA
         actlinknum[k], rate = rates(x, H0, N)      # FP
-#        if k == 3 and N == 100:
-#            print(length)
-        xs = sortlen(length, actlinknum[k], N)
-#       if k == 3 and N == 100:
-#            print(length)
-#            print(xs)
-#            print(x)
+        xs = sortlen(length, actlinknum[k], N)     # SLF
         H2 = updateH(H, xs, N)     # ShortLinkFirst
         H3 = updateH(H, xr, N)     # Random Active
         actlinknum2[k], rate2 = rates(xs, H2, N)   # ShortLinkFirst
@@ -219,17 +212,17 @@ for kk in range(1, step):
         ratess2[k] = sum(rate2)
         ratess3[k] = sum(rate3)
     mapx[kk] = N
-    mapy[kk] = sum(actlinknum)/(K*N)*100
-    mapz[kk] = np.sum(ratess)/K
-    mapk[kk] = np.sum(ratess1)/K
-    mapl[kk] = np.sum(ratess2)/K
-    mapr[kk] = np.sum(ratess3)/K
+    mapy[kk] = sum(actlinknum)/(MAPS*N)*100
+    mapz[kk] = np.sum(ratess)/MAPS
+    mapk[kk] = np.sum(ratess1)/MAPS
+    mapl[kk] = np.sum(ratess2)/MAPS
+    mapr[kk] = np.sum(ratess3)/MAPS
     print('N =', N)
-    print('Aver-activate rate:', sum(actlinknum)/(K*N)*100, '%')
-    print('FP:', np.sum(ratess)/K, 'Mbps')
-    print('AA:', np.sum(ratess1)/K, 'Mbps')
-    print('SLF', np.sum(ratess2)/K, 'Mbps')
-    print('Random', np.sum(ratess3)/K, 'Mbps')
+    print('Aver-activate rate:', sum(actlinknum)/(MAPS*N)*100, '%')
+    print('FP:', np.sum(ratess)/MAPS, 'Mbps')
+    print('AA:', np.sum(ratess1)/MAPS, 'Mbps')
+    print('SLF', np.sum(ratess2)/MAPS, 'Mbps')
+    print('Random', np.sum(ratess3)/MAPS, 'Mbps')
 print(mapx)
 print(mapy)
 print(mapz)
