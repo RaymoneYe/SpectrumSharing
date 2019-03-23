@@ -32,8 +32,8 @@ M1 = 5
 M2 = 15
 M3 = 31
 M = 31
-internumber = 100   # 地图数/组数
-testMAPnumber = 100   # 测试集数量
+internumber = 500   # 地图数/组数
+testMAPnumber = 80   # 测试集数量
 
 
 # %%初始化发送机接收机
@@ -305,11 +305,13 @@ def trainmodel(model, Tzw1, Rzw1, Tzw2, Rzw2, Tzw3, Rzw3, length, X):
     model.fit([np.expand_dims(Tzw1, axis=-1), np.expand_dims(Tzw2, axis=-1),
                np.expand_dims(Tzw3, axis=-1), np.expand_dims(Rzw1, axis=-1),
                np.expand_dims(Rzw2, axis=-1), np.expand_dims(Rzw3, axis=-1),
-               length], X, epochs=8, batch_size=10, validation_data=(
+               length], X, epochs=4, batch_size=10, validation_data=(
                    [np.expand_dims(Taround1v[0, :, :, :], axis=-1), np.expand_dims(Taround2v[0, :, :, :], axis=-1),
                     np.expand_dims(Taround3v[0, :, :, :], axis=-1), np.expand_dims(Raround1v[0, :, :, :], axis=-1),
                     np.expand_dims(Raround2v[0, :, :, :], axis=-1), np.expand_dims(Raround3v[0, :, :, :], axis=-1),
                     lengthallv[0, :, 0]], Xallv[1, :, 0]))
+    # epochs = 8, batch-size = 10训练出过good model, feedback 5次
+    # epochs = 4, batch-size = 10训练出过good model, feedback 3次
 #    model.evaluate([np.expand_dims(Tzw1, axis=-1), np.expand_dims(Tzw2, axis=-1),
 #                    np.expand_dims(Tzw3, axis=-1), np.expand_dims(Rzw1, axis=-1),
 #                    np.expand_dims(Rzw2, axis=-1), np.expand_dims(Rzw3, axis=-1),
@@ -351,8 +353,7 @@ for i in range(0, internumber):   # internumber 地图数/组数
                                                                lengthall[i, :, 0], trainnumber, M1, M2, M3)
         xpred, model = trainmodel(model, Tzw1, Rzw1, Tzw2, Rzw2, Tzw3, Rzw3, length, Xall[i, :, 0])
         xold = xupdate
-model.save('20190321-last.h5')
-
+model.save('20190322-2.h5')
 # $$$$$ 测试网络  $$$$$$$
 
 step = 5
@@ -366,7 +367,7 @@ for nk in range(1, step):
         SumrateAAt = getdata(testMAPnumber, testnumber)  # testinternumber:测试组地图数， testnumber: 测试集链路数
     Sumrate1p = 0
     for i in range(0, testMAPnumber):   # testinternumber = 10, testnumber = 50
-        model.load_weights('20190321-last.h5')
+        model.load_weights('20190322-2.h5')
         # predict函数按batch获得输入数据对应的输出
         res = model.predict([np.expand_dims(Taround1t[i, :, :, :], axis=-1), np.expand_dims(Taround2t[i, :, :, :], axis=-1),
                             np.expand_dims(Taround3t[i, :, :, :], axis=-1), np.expand_dims(Raround1t[i, :, :, :], axis=-1),
@@ -400,16 +401,16 @@ plt.xlabel('N-links')
 plt.ylabel('Sum-rates/Mbps')
 plt.axis([0, (step-1)*50, 0, max(sumfp[step-1], sumdl[step-1])])
 plt.legend()
-plt.savefig("0321-1.png")
+plt.savefig("0322-2.png")
 plt.show()
 
 
 """
-原理完美，但是！训练数据(FP)是否optimal?????这是个问题
-When the layouts contain links of similar distances, many
-distinct  local  optima  emerge,  which  tend  to  confuse  the
+FP is optimal !
+1.When the layouts contain links of similar distances, many distinct local optima emerge, which tend to confuse the
 supervised learning process. 
-
+2. It is worth noting that while the channel gains are needed at the training stage for computing rates,
+they are not needed for scheduling, which only requires GLI
 """
 
 
